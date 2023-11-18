@@ -1,0 +1,160 @@
+version: "2.2"
+services:
+  jobmanager:
+    image: flink:latest
+    hostname: jobmanager
+    container_name: jobmanager
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+    networks:
+      - flink-network
+    restart: on-failure    
+
+  taskmanager:
+    image: flink:latest
+    hostname: taskmanager
+    container_name: taskmanager
+    depends_on:
+      - jobmanager
+    command: taskmanager
+    scale: 1
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 16
+    networks:
+      - flink-network
+    restart: on-failure
+
+  kafka:
+    image: 'bitnami/kafka:latest'
+    hostname: kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      - KAFKA_CFG_NODE_ID=0
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+    networks:
+      - flink-network
+    restart: on-failure
+  
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    hostname: kafka-ui
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - 8080:8080
+    environment:
+      KAFKA_CLUSTERS_0_NAME: kafka
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    networks:
+      - flink-network
+    restart: on-failure
+
+  postgresql:
+    image: debezium/example-postgres:latest
+    hostname: postgresql
+    container_name: postgresql
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=demir
+      - POSTGRES_PASSWORD=demir*/895/
+    volumes: 
+      - ./sql/create_table.sql:/docker-entrypoint-initdb.d/create_table.sql
+      - ./sql/insert_data.sql:/docker-entrypoint-initdb.d/insert_data.sql
+    ports:
+      - '5432:5432'
+    networks:
+      - flink-network
+    restart: on-failure
+
+  pgadmin:
+    image: dpage/pgadmin4
+    hostname: pgadmin
+    container_name: pgadmin
+    depends_on:
+      - postgresql
+    ports:
+      - "8888:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: demir@ahmetfurkandemir.com
+      PGADMIN_DEFAULT_PASSWORD: demir*/895/
+    networks:
+      - flink-network
+    restart: on-failure
+
+  debezium:
+    image: debezium/connect:latest
+    hostname: debezium
+    container_name: debezium
+    depends_on:
+      - postgresql
+      - pgadmin
+      - kafka
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: "kafka:9092"
+      GROUP_ID: "1"
+      CONFIG_STORAGE_TOPIC: "config"
+      OFFSET_STORAGE_TOPIC: "offset"
+      STATUS_STORAGE_TOPIC: "status"
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+    networks:
+      - flink-network
+    restart: on-failure
+
+  debezium-ui:
+    image: debezium/debezium-ui:latest
+    container_name: debezium-ui
+    hostname: debezium-ui
+    depends_on:
+      - debezium
+    ports:
+      - '8086:8080'
+    environment:
+      KAFKA_CONNECT_URIS: http://debezium:8083
+    networks:
+      - flink-network
+    restart: on-failure
+
+  debezium-connector:
+    container_name: debezium-connector
+    build: ./docker/debezium-connector
+    volumes:
+      - .:/code
+    depends_on:
+      - kafka
+      - debezium
+    networks:
+      - flink-network
+    restart: on-failure
+
+networks:
+  flink-network:
+    external: true

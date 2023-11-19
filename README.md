@@ -132,5 +132,8 @@ select * from trendyol_product_flink_table;
 
 ![](/images/sql_2.png)
 
+Check the jobs and SQL commands you run from the interface.
+
+![](/images/flink_run_jobs.png)
 
 [**Ahmet Furkan Demir**](https://ahmetfurkandemir.com/)
